@@ -17,14 +17,16 @@ REPO
 EOF
 
 # deps
-RUN dnf -y --nodocs --setopt=install_weak_deps=False \
-    --exclude='*sdk*' --exclude='*samples*' --exclude='*-doc*' --exclude='*-docs*' \
+RUN dnf -y \
     install \
       make gcc cmake lld clang clang-devel compiler-rt libcurl-devel ninja-build \
+      ca-certificates libatomic libstdc++ libgcc libgomp \
       rocm-llvm rocm-device-libs hip-runtime-amd hip-devel \
       rocblas rocblas-devel hipblas hipblas-devel rocm-cmake libomp-devel libomp \
       rocminfo radeontop \
       git-core vim sudo rsync \
+      calibre ffmpeg nodejs mecab espeak-ng rust sox git \
+      micro bat uv \
  && dnf clean all && rm -rf /var/cache/dnf/*
 
 # rocm env
@@ -32,7 +34,10 @@ ENV ROCM_PATH=/opt/rocm \
     HIP_PATH=/opt/rocm \
     HIP_CLANG_PATH=/opt/rocm/llvm/bin \
     HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode \
-    PATH=/opt/rocm/bin:/opt/rocm/llvm/bin:$PATH
+    PATH=/opt/rocm/bin:/opt/rocm/llvm/bin:$PATH \
+    ESPEAK_LIBRARY=/usr/lib64/libespeak-ng.so.1 \
+    MIOPEN_FIND_MODE=FAST \
+    MIOPEN_USER_DB_PATH="~/tts/miopen_cache" \
 
     # llama.cpp
 WORKDIR /opt/llama.cpp
@@ -69,34 +74,8 @@ RUN find /opt/llama.cpp/build -type f -name 'lib*.so*' -exec cp {} /usr/lib64/ \
 COPY gguf-vram-estimator.py /usr/local/bin/gguf-vram-estimator.py
 RUN chmod +x /usr/local/bin/gguf-vram-estimator.py
 
-# runtime stage
-FROM registry.fedoraproject.org/fedora-minimal:43
-
-# rocm 7.1 repo
-RUN <<'EOF'
-tee /etc/yum.repos.d/rocm.repo <<REPO
-[ROCm-7.1]
-name=ROCm7.1
-baseurl=https://repo.radeon.com/rocm/el9/7.1/main
-enabled=1
-priority=50
-gpgcheck=1
-gpgkey=https://repo.radeon.com/rocm/rocm.gpg.key
-REPO
-EOF
-
-# runtime deps
-RUN microdnf -y --nodocs --setopt=install_weak_deps=0 \
-    --exclude='*sdk*' --exclude='*samples*' --exclude='*-doc*' --exclude='*-docs*' \
-    install \
-      bash ca-certificates libatomic libstdc++ libgcc libgomp sudo \
-      hip-runtime-amd rocblas hipblas \
-      rocminfo radeontop \
- && microdnf clean all && rm -rf /var/cache/dnf/*
-
 # copy
-COPY --from=builder /usr/local/ /usr/local/
-COPY --from=builder /opt/llama.cpp/build/bin/rpc-* /usr/local/bin/
+RUN cp /opt/llama.cpp/build/bin/rpc-* /usr/local/bin/
 
 # ld
 RUN echo "/usr/local/lib"  > /etc/ld.so.conf.d/local.conf \
@@ -105,15 +84,20 @@ RUN echo "/usr/local/lib"  > /etc/ld.so.conf.d/local.conf \
  && cp -n /usr/local/lib/libllama*.so* /usr/lib64/ 2>/dev/null || true \
  && ldconfig
 
-# helper
-COPY gguf-vram-estimator.py /usr/local/bin/gguf-vram-estimator.py
-RUN chmod +x /usr/local/bin/gguf-vram-estimator.py
-
 # profile
 RUN printf '%s\n' \
   'export ROCBLAS_USE_HIPBLASLT=1' \
+  'export ESPEAK_LIBRARY=/usr/lib64/libespeak-ng.so.1' \
+  'export MIOPEN_FIND_MODE=FAST' \
+  'export MIOPEN_USER_DB_PATH="~/tts/miopen_cache"' \
   > /etc/profile.d/rocm.sh && chmod +x /etc/profile.d/rocm.sh \
   && echo 'source /etc/profile.d/rocm.sh' >> /etc/bashrc
+
+# code server
+RUN curl -fsSL https://code-server.dev/install.sh | sh
+
+# pm2
+RUN npm install pm2 -g
 
 # shell
 CMD ["/bin/bash"]
