@@ -21,7 +21,7 @@ RUN dnf -y \
     install \
       make gcc cmake lld clang clang-devel compiler-rt libcurl-devel ninja-build \
       ca-certificates libatomic libstdc++ libgcc libgomp \
-      rocm-llvm rocm-device-libs hip-runtime-amd hip-devel \
+      rocm-llvm rocm-device-libs hip-runtime-amd hip-devel rocrand rocm-smi amd-smi \
       rocblas rocblas-devel hipblas hipblas-devel rocm-cmake libomp-devel libomp \
       rocminfo radeontop \
       git-core vim sudo rsync \
